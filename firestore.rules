@@ -1,0 +1,368 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL PRIMITIVES & RBAC HELPERS ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedEmail() {
+      return isSignedIn() &&
+             request.auth.token.email is string &&
+             request.auth.token.email_verified == true;
+    }
+
+    function authEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidEmailId(emailId) {
+      return emailId is string &&
+             emailId.size() >= 5 &&
+             emailId.size() <= 128 &&
+             emailId.matches('^[a-z0-9._%+\\-]+@[a-z0-9.\\-]+\\.[a-z]{2,}$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    // Bootstrapped Owner Admin (verified Gmail from runtime)
+    function isBootstrapAdmin() {
+      return isVerifiedEmail() && authEmail() == 'siyaramp138@gmail.com';
+    }
+
+    function staffDoc(email) {
+      return get(/databases/$(database)/documents/staff/$(email));
+    }
+
+    function staffExists(email) {
+      return exists(/databases/$(database)/documents/staff/$(email));
+    }
+
+    function isRegisteredAdmin() {
+      return isVerifiedEmail() &&
+             staffExists(authEmail()) &&
+             staffDoc(authEmail()).data.active == true &&
+             staffDoc(authEmail()).data.role == 'ADMIN';
+    }
+
+    function isAdmin() {
+      return isBootstrapAdmin() || isRegisteredAdmin();
+    }
+
+    function isActiveEmployee() {
+      return isVerifiedEmail() &&
+             staffExists(authEmail()) &&
+             staffDoc(authEmail()).data.active == true &&
+             staffDoc(authEmail()).data.role == 'EMPLOYEE';
+    }
+
+    function isStaffMember() {
+      return isAdmin() || isActiveEmployee();
+    }
+
+    // --- VALIDATION BLUEPRINTS ---
+
+    function isValidStaff(data, staffEmail) {
+      return data.keys().hasAll([
+               'email', 'name', 'role', 'active', 'addedByEmail', 'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'email', 'name', 'role', 'active', 'addedByEmail', 'createdAt', 'updatedAt'
+             ]) &&
+             data.email is string && data.email == staffEmail &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+             data.role is string && data.role in ['ADMIN', 'EMPLOYEE'] &&
+             data.active is bool &&
+             data.addedByEmail is string && data.addedByEmail.size() >= 5 && data.addedByEmail.size() <= 128 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidParty(data) {
+      return data.keys().hasAll([
+               'createdByUid', 'createdByName', 'name', 'mobile', 'gstOrAddress',
+               'partyType', 'openingBalance', 'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'createdByUid', 'createdByName', 'name', 'mobile', 'gstOrAddress',
+               'partyType', 'openingBalance', 'createdAt', 'updatedAt'
+             ]) &&
+             data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128 &&
+             data.createdByName is string && data.createdByName.size() <= 120 &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+             data.mobile is string && data.mobile.size() <= 20 &&
+             data.gstOrAddress is string && data.gstOrAddress.size() <= 300 &&
+             data.partyType is string && data.partyType in ['CUSTOMER', 'SUPPLIER', 'BOTH'] &&
+             data.openingBalance is number && data.openingBalance >= -100000000 && data.openingBalance <= 100000000 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll([
+               'createdByUid', 'name', 'sku', 'unit', 'purchaseRate',
+               'sellingRate', 'stockQty', 'minAlertLevel', 'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'createdByUid', 'name', 'sku', 'unit', 'category', 'location',
+               'purchaseRate', 'sellingRate', 'stockQty', 'minAlertLevel',
+               'createdAt', 'updatedAt'
+             ]) &&
+             data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128 &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+             data.sku is string && data.sku.size() <= 60 &&
+             data.unit is string && data.unit.size() >= 1 && data.unit.size() <= 20 &&
+             (!('category' in data) || (data.category is string && data.category.size() <= 60)) &&
+             (!('location' in data) || (data.location is string && data.location.size() <= 80)) &&
+             data.purchaseRate is number && data.purchaseRate >= 0 && data.purchaseRate <= 100000000 &&
+             data.sellingRate is number && data.sellingRate >= 0 && data.sellingRate <= 100000000 &&
+             data.stockQty is number && data.stockQty >= -100000000 && data.stockQty <= 100000000 &&
+             data.minAlertLevel is number && data.minAlertLevel >= 0 && data.minAlertLevel <= 100000000 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidStockMovement(data) {
+      return data.keys().hasAll([
+               'productId', 'productName', 'sku', 'unit', 'changeQty',
+               'movementType', 'reason', 'performedByUid', 'performedByName', 'createdAt'
+             ]) &&
+             data.keys().hasOnly([
+               'productId', 'productName', 'sku', 'unit', 'changeQty',
+               'movementType', 'reason', 'performedByUid', 'performedByName', 'createdAt'
+             ]) &&
+             isValidId(data.productId) &&
+             data.productName is string && data.productName.size() >= 1 && data.productName.size() <= 120 &&
+             data.sku is string && data.sku.size() <= 60 &&
+             data.unit is string && data.unit.size() >= 1 && data.unit.size() <= 20 &&
+             data.changeQty is number && data.changeQty != 0 &&
+             data.changeQty >= -100000000 && data.changeQty <= 100000000 &&
+             data.movementType is string &&
+             data.movementType in ['INITIAL_STOCK', 'RESTOCK', 'DEDUCT', 'ORDER_SALE', 'AUDIT_ADJUST'] &&
+             data.reason is string && data.reason.size() <= 240 &&
+             data.performedByUid is string && data.performedByUid.size() >= 1 && data.performedByUid.size() <= 128 &&
+             data.performedByName is string && data.performedByName.size() <= 120 &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll([
+               'createdByUid', 'createdByName', 'orderNumber', 'partyId', 'partyName',
+               'partyMobile', 'partyGstOrAddress', 'orderDateMillis', 'status', 'items',
+               'subtotal', 'taxPercent', 'taxAmount', 'discountAmount',
+               'grandTotal', 'advancePaid', 'notes', 'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'createdByUid', 'createdByName', 'orderNumber', 'documentType', 'partyId', 'partyName',
+               'partyMobile', 'partyGstOrAddress', 'orderLocation', 'orderDateMillis', 'status', 'items',
+               'subtotal', 'taxPercent', 'taxAmount', 'discountAmount',
+               'grandTotal', 'advancePaid', 'notes', 'photoBase64', 'createdAt', 'updatedAt'
+             ]) &&
+             data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128 &&
+             data.createdByName is string && data.createdByName.size() <= 120 &&
+             data.orderNumber is string && data.orderNumber.size() >= 1 && data.orderNumber.size() <= 40 &&
+             (!('documentType' in data) || (data.documentType is string && data.documentType in ['ORDER', 'ESTIMATE'])) &&
+             isValidId(data.partyId) &&
+             data.partyName is string && data.partyName.size() >= 1 && data.partyName.size() <= 120 &&
+             data.partyMobile is string && data.partyMobile.size() <= 20 &&
+             data.partyGstOrAddress is string && data.partyGstOrAddress.size() <= 300 &&
+             (!('orderLocation' in data) || (data.orderLocation is string && data.orderLocation.size() <= 160)) &&
+             data.orderDateMillis is int && data.orderDateMillis > 0 &&
+             data.status is string && data.status in ['PENDING', 'DISPATCHED', 'DELIVERED'] &&
+             data.items is list && data.items.size() >= 1 && data.items.size() <= 50 && data.items[0] is map &&
+             data.subtotal is number && data.subtotal >= 0 && data.subtotal <= 1000000000 &&
+             data.taxPercent is number && data.taxPercent >= 0 && data.taxPercent <= 100 &&
+             data.taxAmount is number && data.taxAmount >= 0 && data.taxAmount <= 1000000000 &&
+             data.discountAmount is number && data.discountAmount >= 0 && data.discountAmount <= 1000000000 &&
+             data.grandTotal is number && data.grandTotal >= 0 && data.grandTotal <= 1000000000 &&
+             data.advancePaid is number && data.advancePaid >= 0 && data.advancePaid <= 1000000000 &&
+             data.notes is string && data.notes.size() <= 500 &&
+             (!('photoBase64' in data) || (data.photoBase64 is string && data.photoBase64.size() <= 400000)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidPayment(data) {
+      return data.keys().hasAll([
+               'createdByUid', 'createdByName', 'partyId', 'partyName', 'orderId',
+               'orderNumber', 'amount', 'paymentMode', 'paymentDateMillis',
+               'referenceNote', 'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'createdByUid', 'createdByName', 'partyId', 'partyName', 'orderId',
+               'orderNumber', 'amount', 'paymentMode', 'paymentDateMillis',
+               'referenceNote', 'createdAt', 'updatedAt'
+             ]) &&
+             data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128 &&
+             data.createdByName is string && data.createdByName.size() <= 120 &&
+             isValidId(data.partyId) &&
+             data.partyName is string && data.partyName.size() >= 1 && data.partyName.size() <= 120 &&
+             data.orderId is string && data.orderId.size() <= 128 &&
+             data.orderNumber is string && data.orderNumber.size() <= 40 &&
+             data.amount is number && data.amount > 0 && data.amount <= 1000000000 &&
+             data.paymentMode is string && data.paymentMode in ['CASH', 'UPI', 'BANK', 'CHEQUE'] &&
+             data.paymentDateMillis is int && data.paymentDateMillis > 0 &&
+             data.referenceNote is string && data.referenceNote.size() <= 240 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    // --- 1. STAFF ACCESS DIRECTORY (RBAC) ---
+    match /staff/{staffEmail} {
+      allow list: if isAdmin();
+      allow get: if isValidEmailId(staffEmail) &&
+                    (isAdmin() || (isVerifiedEmail() && authEmail() == staffEmail));
+      allow create: if isAdmin() &&
+                       isValidEmailId(staffEmail) &&
+                       isValidStaff(incoming(), staffEmail);
+      allow update: if isAdmin() &&
+                       isValidEmailId(staffEmail) &&
+                       isValidStaff(incoming(), staffEmail) &&
+                       incoming().email == existing().email &&
+                       incoming().addedByEmail == existing().addedByEmail &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'name', 'role', 'active', 'updatedAt'
+                       ]);
+      allow delete: if isAdmin() &&
+                       isValidEmailId(staffEmail) &&
+                       staffEmail != 'siyaramp138@gmail.com';
+    }
+
+    // --- 2. PARTIES (CUSTOMERS / SUPPLIERS LEDGER) ---
+    match /parties/{partyId} {
+      allow list: if isStaffMember();
+      allow get: if isStaffMember() && isValidId(partyId);
+      allow create: if isStaffMember() &&
+                       isValidId(partyId) &&
+                       isValidParty(incoming()) &&
+                       incoming().createdByUid == request.auth.uid;
+      allow update: if isStaffMember() &&
+                       isValidId(partyId) &&
+                       isValidParty(incoming()) &&
+                       incoming().createdByUid == existing().createdByUid &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         // Action: Edit Party Details
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'name', 'mobile', 'gstOrAddress', 'partyType', 'openingBalance', 'updatedAt'
+                         ])
+                       );
+      allow delete: if isAdmin() && isValidId(partyId);
+    }
+
+    // --- 3. PRODUCTS (INVENTORY STOCK) ---
+    match /products/{productId} {
+      allow list: if isStaffMember();
+      allow get: if isStaffMember() && isValidId(productId);
+      allow create: if isStaffMember() &&
+                       isValidId(productId) &&
+                       isValidProduct(incoming()) &&
+                       incoming().createdByUid == request.auth.uid;
+      allow update: if isStaffMember() &&
+                       isValidId(productId) &&
+                       isValidProduct(incoming()) &&
+                       incoming().createdByUid == existing().createdByUid &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         // Tier 1 (Admin): Edit Full Product Catalog, Category, Location & Rates
+                         (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly([
+                           'name', 'sku', 'unit', 'category', 'location', 'purchaseRate',
+                           'sellingRate', 'stockQty', 'minAlertLevel', 'updatedAt'
+                         ])) ||
+                         // Tier 2 (Staff): Adjust Stock Quantity / Auto-Deduction on Order
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'stockQty', 'updatedAt'
+                         ])
+                       );
+      allow delete: if isAdmin() && isValidId(productId);
+    }
+
+    // --- 4. STOCK MOVEMENTS (IMMUTABLE INVENTORY AUDIT LEDGER) ---
+    match /stock_movements/{movementId} {
+      allow list: if isStaffMember();
+      allow get: if isStaffMember() && isValidId(movementId);
+      allow create: if isStaffMember() &&
+                       isValidId(movementId) &&
+                       isValidStockMovement(incoming()) &&
+                       incoming().performedByUid == request.auth.uid &&
+                       existsAfter(/databases/$(database)/documents/products/$(incoming().productId));
+      allow update: if false;
+      allow delete: if isAdmin() && isValidId(movementId);
+    }
+
+    // --- 5. ORDERS & SALE ESTIMATES (ADMIN ALL / EMPLOYEE CREATOR-ONLY) ---
+    match /orders/{orderId} {
+      allow list: if isAdmin() || (isActiveEmployee() && resource.data.createdByUid == request.auth.uid);
+      allow get: if isValidId(orderId) &&
+                    (isAdmin() || (isActiveEmployee() && resource.data.createdByUid == request.auth.uid));
+      allow create: if isStaffMember() &&
+                       isValidId(orderId) &&
+                       isValidOrder(incoming()) &&
+                       incoming().createdByUid == request.auth.uid &&
+                       exists(/databases/$(database)/documents/parties/$(incoming().partyId));
+      allow update: if isValidId(orderId) &&
+                       (isAdmin() || (isActiveEmployee() && existing().createdByUid == request.auth.uid)) &&
+                       isValidOrder(incoming()) &&
+                       incoming().createdByUid == existing().createdByUid &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         incoming().partyId == existing().partyId ||
+                         exists(/databases/$(database)/documents/parties/$(incoming().partyId))
+                       ) &&
+                       (isAdmin() || existing().status != 'DELIVERED' || incoming().diff(existing()).affectedKeys().hasOnly(['photoBase64', 'updatedAt'])) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'orderNumber', 'documentType', 'partyId', 'partyName', 'partyMobile',
+                         'partyGstOrAddress', 'orderLocation', 'orderDateMillis', 'status',
+                         'items', 'subtotal', 'taxPercent', 'taxAmount', 'discountAmount',
+                         'grandTotal', 'notes', 'photoBase64', 'updatedAt'
+                       ]);
+      allow delete: if isAdmin() && isValidId(orderId);
+    }
+
+    // --- 6. PAYMENTS (PARTY PAYMENT HISTORY) ---
+    match /payments/{paymentId} {
+      allow list: if isStaffMember();
+      allow get: if isStaffMember() && isValidId(paymentId);
+      allow create: if isStaffMember() &&
+                       isValidId(paymentId) &&
+                       isValidPayment(incoming()) &&
+                       incoming().createdByUid == request.auth.uid &&
+                       exists(/databases/$(database)/documents/parties/$(incoming().partyId));
+      allow update: if isAdmin() &&
+                       isValidId(paymentId) &&
+                       isValidPayment(incoming()) &&
+                       incoming().createdByUid == existing().createdByUid &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().partyId == existing().partyId &&
+                       (
+                         // Action: Admin Edit Payment Mode / Reference Note
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'paymentMode', 'referenceNote', 'updatedAt'
+                         ])
+                       );
+      allow delete: if isAdmin() && isValidId(paymentId);
+    }
+  }
+}

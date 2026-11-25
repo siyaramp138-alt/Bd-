@@ -1,0 +1,6 @@
+{
+  "name": "BD Ent",
+  "description": "Business management app for BD Ent featuring order management, inventory stock tracking, party payment dues ledger, WhatsApp reminders, invoices, and CSV/JSON backup.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

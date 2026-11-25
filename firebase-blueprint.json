@@ -1,0 +1,254 @@
+{
+  "entities": {
+    "StaffMember": {
+      "title": "StaffMember",
+      "description": "An Admin-approved staff member (Admin or Employee) authorized to access BD Enterprises Indore.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Lowercase Gmail address matching the document ID."
+        },
+        "name": {
+          "type": "string",
+          "description": "Staff full name (1-120 chars)."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["ADMIN", "EMPLOYEE"],
+          "description": "Access control role."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether this account is currently enabled."
+        },
+        "addedByEmail": {
+          "type": "string",
+          "description": "Admin email who registered this staff member."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp written via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp written via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "email",
+        "name",
+        "role",
+        "active",
+        "addedByEmail",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Party": {
+      "title": "Party",
+      "description": "A customer or supplier ledger account for BD Enterprises Indore.",
+      "type": "object",
+      "properties": {
+        "createdByUid": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "name": { "type": "string" },
+        "mobile": { "type": "string" },
+        "gstOrAddress": { "type": "string" },
+        "partyType": { "type": "string", "enum": ["CUSTOMER", "SUPPLIER", "BOTH"] },
+        "openingBalance": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "createdByUid",
+        "createdByName",
+        "name",
+        "mobile",
+        "gstOrAddress",
+        "partyType",
+        "openingBalance",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "An inventory stock item tracked in Firestore by BD Enterprises Indore.",
+      "type": "object",
+      "properties": {
+        "createdByUid": { "type": "string" },
+        "name": { "type": "string" },
+        "sku": { "type": "string" },
+        "unit": { "type": "string" },
+        "category": { "type": "string", "description": "Optional inventory category (0-60 chars)." },
+        "location": { "type": "string", "description": "Optional warehouse rack/bin location (0-80 chars)." },
+        "purchaseRate": { "type": "number" },
+        "sellingRate": { "type": "number" },
+        "stockQty": { "type": "number" },
+        "minAlertLevel": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "createdByUid",
+        "name",
+        "sku",
+        "unit",
+        "purchaseRate",
+        "sellingRate",
+        "stockQty",
+        "minAlertLevel",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StockMovement": {
+      "title": "StockMovement",
+      "description": "Immutable Firestore audit log recording every inventory stock addition, deduction, or order sale.",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "sku": { "type": "string" },
+        "unit": { "type": "string" },
+        "changeQty": { "type": "number", "description": "Signed quantity delta (positive for restock, negative for deduction)." },
+        "movementType": {
+          "type": "string",
+          "enum": ["INITIAL_STOCK", "RESTOCK", "DEDUCT", "ORDER_SALE", "AUDIT_ADJUST"]
+        },
+        "reason": { "type": "string" },
+        "performedByUid": { "type": "string" },
+        "performedByName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp written via FieldValue.serverTimestamp()." }
+      },
+      "required": [
+        "productId",
+        "productName",
+        "sku",
+        "unit",
+        "changeQty",
+        "movementType",
+        "reason",
+        "performedByUid",
+        "performedByName",
+        "createdAt"
+      ]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "A sales order or sale estimate created in BD Enterprises Indore.",
+      "type": "object",
+      "properties": {
+        "createdByUid": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "documentType": {
+          "type": "string",
+          "enum": ["ORDER", "ESTIMATE"],
+          "description": "Optional record type (ORDER for confirmed sale order, ESTIMATE for sale estimate/quotation)."
+        },
+        "partyId": { "type": "string" },
+        "partyName": { "type": "string" },
+        "partyMobile": { "type": "string" },
+        "partyGstOrAddress": { "type": "string" },
+        "orderLocation": { "type": "string", "description": "Optional delivery/route area or GPS-detected location (0-160 chars)." },
+        "orderDateMillis": { "type": "integer" },
+        "status": { "type": "string", "enum": ["PENDING", "DISPATCHED", "DELIVERED"] },
+        "items": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "taxPercent": { "type": "number" },
+        "taxAmount": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "grandTotal": { "type": "number" },
+        "advancePaid": { "type": "number" },
+        "notes": { "type": "string" },
+        "photoBase64": { "type": "string", "description": "Optional compressed JPEG camera attachment encoded in Base64 (<= 400,000 chars)." },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "createdByUid",
+        "createdByName",
+        "orderNumber",
+        "partyId",
+        "partyName",
+        "partyMobile",
+        "partyGstOrAddress",
+        "orderDateMillis",
+        "status",
+        "items",
+        "subtotal",
+        "taxPercent",
+        "taxAmount",
+        "discountAmount",
+        "grandTotal",
+        "advancePaid",
+        "notes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "A payment receipt logged against a party.",
+      "type": "object",
+      "properties": {
+        "createdByUid": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "partyId": { "type": "string" },
+        "partyName": { "type": "string" },
+        "orderId": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "amount": { "type": "number" },
+        "paymentMode": { "type": "string", "enum": ["CASH", "UPI", "BANK", "CHEQUE"] },
+        "paymentDateMillis": { "type": "integer" },
+        "referenceNote": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "createdByUid",
+        "createdByName",
+        "partyId",
+        "partyName",
+        "orderId",
+        "orderNumber",
+        "amount",
+        "paymentMode",
+        "paymentDateMillis",
+        "referenceNote",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/staff/{staffEmail}": {
+      "schema": { "$ref": "#/entities/StaffMember" },
+      "description": "RBAC directory of Admin and Employee Gmail accounts authorized for BD Enterprises Indore."
+    },
+    "/parties/{partyId}": {
+      "schema": { "$ref": "#/entities/Party" },
+      "description": "Company-wide customer and supplier ledger accounts accessible to authorized staff."
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Company-wide inventory stock catalog with category, warehouse location, rates, and live stock levels."
+    },
+    "/stock_movements/{movementId}": {
+      "schema": { "$ref": "#/entities/StockMovement" },
+      "description": "Append-only Firestore audit ledger of every inventory stock level change."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Company-wide sales orders and invoices."
+    },
+    "/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/Payment" },
+      "description": "Company-wide party payment receipts."
+    }
+  }
+}
